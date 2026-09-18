@@ -216,3 +216,19 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local Python environment
+agent-venv/
+.venv/
+
+# PyCharm
+.idea/
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local configuration and runtime data
+.env
+data/
