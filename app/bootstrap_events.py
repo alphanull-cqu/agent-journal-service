@@ -10,13 +10,13 @@ def get_repository_bootstrap_arguments(
     github_org: str,
 ) -> tuple[int, str, str] | None:
     """
-    从 Repository 或 Push 事件中提取初始化参数。
+    从默认分支 Push 事件中提取初始化参数。
 
-    只有指定组织内的新仓库事件或默认分支 Push
-    才允许触发初始化。
+    Repository Created 不直接写入仓库，
+    避免 GitHub App 抢先创建第一次提交。
     """
 
-    if event_name not in {"repository", "push"}:
+    if event_name != "push":
         return None
 
     repository = payload.get("repository")
@@ -59,30 +59,25 @@ def get_repository_bootstrap_arguments(
     ):
         default_branch = "main"
 
-    if event_name == "repository":
-        if payload.get("action") != "created":
-            return None
+    pushed_ref = payload.get("ref")
+    after_sha = payload.get("after")
 
-    if event_name == "push":
-        pushed_ref = payload.get("ref")
-        after_sha = payload.get("after")
+    if payload.get("deleted") is True:
+        return None
 
-        if payload.get("deleted") is True:
-            return None
+    if (
+        not isinstance(pushed_ref, str)
+        or pushed_ref
+        != f"refs/heads/{default_branch}"
+    ):
+        return None
 
-        if (
-            not isinstance(pushed_ref, str)
-            or pushed_ref
-            != f"refs/heads/{default_branch}"
-        ):
-            return None
-
-        if (
-            not isinstance(after_sha, str)
-            or not after_sha
-            or after_sha == ZERO_COMMIT_SHA
-        ):
-            return None
+    if (
+        not isinstance(after_sha, str)
+        or not after_sha
+        or after_sha == ZERO_COMMIT_SHA
+    ):
+        return None
 
     return (
         installation_id,

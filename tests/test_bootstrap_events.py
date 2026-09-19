@@ -75,8 +75,8 @@ class BootstrapEventTests(unittest.TestCase):
 
         self.assertIsNone(result)
 
-    def test_repository_created_is_accepted(
-        self,
+    def test_repository_created_waits_for_push(
+            self,
     ) -> None:
         payload = {
             "action": "created",
@@ -94,14 +94,7 @@ class BootstrapEventTests(unittest.TestCase):
             github_org=self.github_org,
         )
 
-        self.assertEqual(
-            (
-                162746508,
-                "alphanull-cqu/example-project",
-                "main",
-            ),
-            result,
-        )
+        self.assertIsNone(result)
 
     def test_other_repository_action_is_skipped(
         self,

@@ -136,8 +136,16 @@ async def receive_github_webhook(
 
     if event_name in {"repository", "push"}:
         if bootstrap_arguments is None:
-            result["bootstrap"] = "skipped"
-
+            if (
+                    event_name == "repository"
+                    and payload_data.get("action")
+                    == "created"
+            ):
+                result["bootstrap"] = (
+                    "waiting_for_first_push"
+                )
+            else:
+                result["bootstrap"] = "skipped"
         else:
             (
                 installation_id,
