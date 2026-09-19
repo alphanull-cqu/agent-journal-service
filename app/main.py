@@ -2,7 +2,9 @@ import json
 import logging
 from json import JSONDecodeError
 from typing import Any
-
+from app.bootstrap_events import (
+    get_repository_bootstrap_arguments,
+)
 from fastapi import (
     BackgroundTasks,
     FastAPI,
@@ -25,13 +27,15 @@ app = FastAPI(
 logger = logging.getLogger("uvicorn.error")
 
 
+
+
 def run_repository_bootstrap(
     installation_id: int,
     repository_full_name: str,
     default_branch: str,
 ) -> None:
     """
-    在后台向新仓库安装 Agent Journal。
+    在后台确保仓库已经安装最新的 Agent Journal 指令。
     """
 
     try:
@@ -43,9 +47,11 @@ def run_repository_bootstrap(
 
         logger.info(
             "Agent Journal bootstrap finished: "
-            "repository=%s status=%s",
+            "repository=%s status=%s path=%s reason=%s",
             repository_full_name,
             result.get("status"),
+            result.get("path"),
+            result.get("reason", "none"),
         )
 
     except Exception:
@@ -53,6 +59,9 @@ def run_repository_bootstrap(
             "Agent Journal bootstrap failed: repository=%s",
             repository_full_name,
         )
+
+
+
 
 
 @app.get("/healthz")
@@ -117,61 +126,35 @@ async def receive_github_webhook(
 
     result["delivery_id"] = delivery_id
 
-    if (
-        event_name == "repository"
-        and payload_data.get("action") == "created"
-    ):
-        repository = payload_data.get("repository")
-        installation = payload_data.get("installation")
+    bootstrap_arguments = (
+        get_repository_bootstrap_arguments(
+            event_name=event_name,
+            payload=payload_data,
+            github_org=settings.github_org,
+        )
+    )
 
-        if (
-            isinstance(repository, dict)
-            and isinstance(installation, dict)
-        ):
-            repository_full_name = repository.get(
-                "full_name"
-            )
-            default_branch = repository.get(
-                "default_branch"
-            )
-            installation_id = installation.get("id")
-
-            owner = repository.get("owner")
-            owner_login = (
-                owner.get("login")
-                if isinstance(owner, dict)
-                else None
-            )
-
-            if (
-                isinstance(repository_full_name, str)
-                and repository_full_name
-                and isinstance(installation_id, int)
-                and isinstance(owner_login, str)
-                and owner_login.casefold()
-                == settings.github_org.casefold()
-            ):
-                if (
-                    not isinstance(default_branch, str)
-                    or not default_branch
-                ):
-                    default_branch = "main"
-
-                background_tasks.add_task(
-                    run_repository_bootstrap,
-                    installation_id=installation_id,
-                    repository_full_name=(
-                        repository_full_name
-                    ),
-                    default_branch=default_branch,
-                )
-
-                result["bootstrap"] = "scheduled"
-
-            else:
-                result["bootstrap"] = "skipped"
-        else:
+    if event_name in {"repository", "push"}:
+        if bootstrap_arguments is None:
             result["bootstrap"] = "skipped"
+
+        else:
+            (
+                installation_id,
+                repository_full_name,
+                default_branch,
+            ) = bootstrap_arguments
+
+            background_tasks.add_task(
+                run_repository_bootstrap,
+                installation_id=installation_id,
+                repository_full_name=(
+                    repository_full_name
+                ),
+                default_branch=default_branch,
+            )
+
+            result["bootstrap"] = "scheduled"
 
     logger.info(
         "GitHub webhook received: "
@@ -181,7 +164,10 @@ async def receive_github_webhook(
         result.get("repository"),
         delivery_id,
         result.get("status"),
-        result.get("bootstrap", "not_applicable"),
+        result.get(
+            "bootstrap",
+            "not_applicable",
+        ),
     )
 
     return result
